@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brújula Real</title>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+body{
+    margin:0;
+    background:#0c0f14;
+    height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:'Inter', sans-serif;
+    overflow:hidden;
+}
+
+/* BOTÓN MENÚ */
+#menuBtn{
+    position:fixed;
+    top:20px;
+    left:20px;
+    width:28px;
+    height:22px;
+    cursor:pointer;
+    z-index:1002;
+}
+#menuBtn span{
+    display:block;
+    height:2px;
+    background:#e0e0e0;
+    margin:6px 0;
+    border-radius:2px;
+    transition:0.3s;
+}
+#menuBtn.active span:nth-child(1){
+    transform:rotate(45deg) translate(5px,5px);
+}
+#menuBtn.active span:nth-child(2){
+    opacity:0;
+}
+#menuBtn.active span:nth-child(3){
+    transform:rotate(-45deg) translate(6px,-6px);
+}
+
+/* OVERLAY */
+#overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.4);
+    opacity:0;
+    pointer-events:none;
+    transition:0.3s;
+}
+#overlay.active{
+    opacity:1;
+    pointer-events:auto;
+}
+
+/* MENÚ */
+#sideMenu{
+    position:fixed;
+    top:0;
+    left:-280px;
+    width:280px;
+    height:100%;
+    background:#161b22;
+    padding:70px 24px;
+    transition:0.35s ease;
+    box-shadow:4px 0 30px rgba(0,0,0,0.6);
+}
+#sideMenu.active{ left:0; }
+
+#sideMenu h2{
+    font-size:15px;
+    font-weight:600;
+    color:#9aa4b2;
+    margin-bottom:35px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+}
+
+.menu-item{
+    display:block;
+    width:100%;
+    padding:16px;
+    margin-bottom:14px;
+    border-radius:12px;
+    background:#1f2630;
+    border:1px solid #2d3642;
+    font-size:15px;
+    font-weight:500;
+    color:#e6edf3;
+    cursor:pointer;
+    transition:all 0.25s ease;
+}
+.menu-item:hover{
+    background:#2a3340;
+    border-color:#3b82f6;
+    transform:translateX(6px);
+}
+
+/* FLECHA */
+#arrow-container{
+    position:relative;
+    width:220px;
+    height:220px;
+}
+
+#arrow-wrapper{
+    position:absolute;
+    width:100%;
+    height:100%;
+    transform:rotate(0deg);
+    transform-origin:center center;
+    filter:drop-shadow(0 0 15px #00f7ff);
+    transition:filter 0.2s ease;
+}
+
+#arrow-wrapper.locked{
+    filter:drop-shadow(0 0 35px #00f7ff);
+}
+
+#arrow{
+    position:absolute;
+    top:0;
+    left:50%;
+    transform:translateX(-50%);
+    width:0;
+    height:0;
+    border-left:22px solid transparent;
+    border-right:22px solid transparent;
+    border-bottom:140px solid #00f7ff;
+}
+
+#arrow::after{
+    content:'';
+    position:absolute;
+    left:-8px;
+    top:40px;
+    border-left:8px solid transparent;
+    border-right:8px solid transparent;
+    border-bottom:50px solid #ffffff;
+}
+
+#arrow-base{
+    position:absolute;
+    bottom:0;
+    left:50%;
+    transform:translateX(-50%);
+    width:18px;
+    height:40px;
+    background:#00f7ff;
+    border-radius:10px;
+}
+
+#center-dot{
+    position:absolute;
+    bottom:-8px;
+    left:50%;
+    transform:translateX(-50%);
+    width:14px;
+    height:14px;
+    background:#00f7ff;
+    border-radius:50%;
+}
+</style>
+</head>
+<body>
+
+<div id="menuBtn" onclick="toggleMenu()">
+    <span></span>
+    <span></span>
+    <span></span>
+</div>
+
+<div id="overlay" onclick="toggleMenu()"></div>
+
+<div id="sideMenu">
+    <h2>Navegación</h2>
+    <button class="menu-item" onclick="requestPermission()">Permisos</button>
+    <button class="menu-item">Lugares</button>
+    <button class="menu-item">Personas</button>
+</div>
+
+<div id="arrow-container">
+    <div id="arrow-wrapper">
+        <div id="arrow"></div>
+        <div id="arrow-base"></div>
+        <div id="center-dot"></div>
+    </div>
+</div>
+
+<script>
+function toggleMenu(){
+    document.getElementById("sideMenu").classList.toggle("active");
+    document.getElementById("overlay").classList.toggle("active");
+    document.getElementById("menuBtn").classList.toggle("active");
+}
+
+/* ===== BRÚJULA REAL ===== */
+
+let currentRotation = 0;
+let targetRotation = 0;
+const arrowWrapper = document.getElementById("arrow-wrapper");
+
+function smoothRotate(){
+    let diff = targetRotation - currentRotation;
+    diff = ((diff + 540) % 360) - 180;
+    currentRotation += diff * 0.08;
+    arrowWrapper.style.transform = `rotate(${currentRotation}deg)`;
+    requestAnimationFrame(smoothRotate);
+}
+smoothRotate();
+
+function handleOrientation(event){
+    let heading;
+
+    if(event.webkitCompassHeading){
+        heading = event.webkitCompassHeading; // iPhone
+    } else {
+        heading = 360 - event.alpha; // Android
+    }
+
+    targetRotation = heading;
+}
+
+async function requestPermission(){
+
+    if(typeof DeviceOrientationEvent.requestPermission === "function"){
+        try{
+            const response = await DeviceOrientationEvent.requestPermission();
+            if(response === "granted"){
+                window.addEventListener("deviceorientation", handleOrientation, true);
+                alert("Permiso concedido");
+            }
+        }catch(err){
+            alert("Error: " + err);
+        }
+    }else{
+        window.addEventListener("deviceorientationabsolute", handleOrientation, true);
+        window.addEventListener("deviceorientation", handleOrientation, true);
+        alert("Sensores activados");
+    }
+}
+</script>
+
+</body>
+</html>
