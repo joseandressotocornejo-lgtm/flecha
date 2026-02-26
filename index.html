@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tu Norte</title>
+<title>Brújula de Objetivos</title>
 
 <style>
 body {
@@ -52,10 +52,6 @@ body {
     cursor: pointer;
 }
 
-.menu button:hover {
-    background: #d4d4d4;
-}
-
 .container {
     display: flex;
     justify-content: center;
@@ -66,11 +62,6 @@ body {
 .arrow {
     width: 200px;
     height: 200px;
-}
-
-svg {
-    width: 100%;
-    height: 100%;
 }
 </style>
 </head>
@@ -117,15 +108,6 @@ function shortestAngleDiff(a,b){
 function animate(){
     let diff = shortestAngleDiff(currentAngle, targetAngle);
 
-    if(Math.abs(diff) < 0.2){
-        diff = 0;
-        document.getElementById("arrowSVG").style.filter =
-            "drop-shadow(0 0 20px #00f7ff) drop-shadow(0 0 60px #00f7ff)";
-    } else {
-        document.getElementById("arrowSVG").style.filter =
-            "drop-shadow(0 0 10px #00f7ff) drop-shadow(0 0 30px #00f7ff)";
-    }
-
     currentAngle += diff * smoothingFactor;
     currentAngle = normalizeAngle(currentAngle);
 
@@ -146,8 +128,7 @@ function requestPermissions(){
             if(response === "granted"){
                 startCompass();
             }
-        })
-        .catch(console.error);
+        });
 
     } else {
         startCompass();
@@ -157,22 +138,32 @@ function requestPermissions(){
 }
 
 function startCompass(){
-    window.addEventListener("deviceorientation", (event)=>{
+    window.addEventListener("deviceorientationabsolute", handleOrientation, true);
+    window.addEventListener("deviceorientation", handleOrientation, true);
+}
 
-        let heading;
+function handleOrientation(event){
 
-        if(event.webkitCompassHeading !== undefined){
-            heading = event.webkitCompassHeading; // iPhone real north
-        } else if(event.absolute === true && event.alpha !== null){
-            heading = event.alpha; // Android absolute
-        } else if(event.alpha !== null){
-            heading = event.alpha; // fallback
+    let heading;
+
+    if(event.webkitCompassHeading !== undefined){
+        heading = event.webkitCompassHeading;
+    } else if(event.absolute === true && event.alpha !== null){
+        heading = event.alpha;
+    } else if(event.alpha !== null){
+        heading = event.alpha;
+    }
+
+    if(heading !== undefined){
+
+        // corregir según orientación pantalla
+        let screenAngle = 0;
+        if(screen.orientation && screen.orientation.angle){
+            screenAngle = screen.orientation.angle;
         }
 
-        if(heading !== undefined){
-            targetAngle = 360 - heading;
-        }
-    });
+        targetAngle = normalizeAngle(360 - heading + screenAngle);
+    }
 }
 </script>
 
