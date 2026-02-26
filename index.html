@@ -3,167 +3,103 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Brújula de Objetivos</title>
+<title>Debug Brújula</title>
 
 <style>
-body {
-    margin: 0;
-    background: #0f0f14;
-    overflow: hidden;
-    font-family: Arial, sans-serif;
+body{
+    margin:0;
+    background:#0f0f14;
+    color:white;
+    font-family:Arial;
+    overflow:hidden;
 }
 
-.menu-btn {
-    position: absolute;
-    top: 20px;
-    left: 20px;
-    font-size: 28px;
-    background: none;
-    border: none;
-    color: #333;
-    z-index: 10;
+.container{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:70vh;
 }
 
-.menu {
-    position: fixed;
-    top: 0;
-    left: -260px;
-    width: 240px;
-    height: 100%;
-    background: #ffffff;
-    box-shadow: 2px 0 20px rgba(0,0,0,0.2);
-    padding-top: 80px;
-    transition: 0.3s ease;
+.arrow{
+    width:200px;
+    height:200px;
 }
 
-.menu.active {
-    left: 0;
-}
-
-.menu button {
-    display: block;
-    width: 80%;
-    margin: 15px auto;
-    padding: 12px;
-    border: none;
-    border-radius: 10px;
-    background: #e6e6e6;
-    font-size: 16px;
-    cursor: pointer;
-}
-
-.container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-}
-
-.arrow {
-    width: 200px;
-    height: 200px;
+.debug{
+    position:absolute;
+    bottom:0;
+    width:100%;
+    background:#111;
+    padding:15px;
+    font-size:14px;
 }
 </style>
 </head>
 
 <body>
 
-<button class="menu-btn" onclick="toggleMenu()">☰</button>
-
-<div class="menu" id="menu">
-    <button>Lugares</button>
-    <button>Personas</button>
-    <button onclick="requestPermissions()">Permisos</button>
-</div>
-
 <div class="container">
     <div class="arrow" id="arrow">
-        <svg viewBox="0 0 100 100" id="arrowSVG">
+        <svg viewBox="0 0 100 100">
             <polygon points="50,5 90,95 50,75 10,95"
                      fill="#00f7ff"/>
         </svg>
     </div>
 </div>
 
+<div class="debug" id="debug">
+Esperando datos...
+</div>
+
 <script>
 let currentAngle = 0;
 let targetAngle = 0;
-let smoothingFactor = 0.08;
 
-function toggleMenu(){
-    document.getElementById("menu").classList.toggle("active");
-}
-
-function normalizeAngle(angle){
-    return (angle + 360) % 360;
-}
-
-function shortestAngleDiff(a,b){
-    let diff = b - a;
-    if(diff > 180) diff -= 360;
-    if(diff < -180) diff += 360;
-    return diff;
+function normalizeAngle(a){
+    return (a+360)%360;
 }
 
 function animate(){
-    let diff = shortestAngleDiff(currentAngle, targetAngle);
-
-    currentAngle += diff * smoothingFactor;
-    currentAngle = normalizeAngle(currentAngle);
-
+    currentAngle += (targetAngle-currentAngle)*0.1;
     document.getElementById("arrow").style.transform =
         `rotate(${currentAngle}deg)`;
-
     requestAnimationFrame(animate);
 }
-
 requestAnimationFrame(animate);
 
-function requestPermissions(){
-    if(typeof DeviceOrientationEvent !== "undefined" &&
-       typeof DeviceOrientationEvent.requestPermission === "function"){
-
-        DeviceOrientationEvent.requestPermission()
-        .then(response => {
-            if(response === "granted"){
-                startCompass();
-            }
-        });
-
-    } else {
-        startCompass();
-    }
-
-    navigator.geolocation.getCurrentPosition(()=>{},()=>{});
+function start(){
+    window.addEventListener("deviceorientationabsolute", handle, true);
+    window.addEventListener("deviceorientation", handle, true);
 }
 
-function startCompass(){
-    window.addEventListener("deviceorientationabsolute", handleOrientation, true);
-    window.addEventListener("deviceorientation", handleOrientation, true);
-}
-
-function handleOrientation(event){
+function handle(event){
 
     let heading;
-
     if(event.webkitCompassHeading !== undefined){
         heading = event.webkitCompassHeading;
-    } else if(event.absolute === true && event.alpha !== null){
-        heading = event.alpha;
-    } else if(event.alpha !== null){
+    } else {
         heading = event.alpha;
     }
 
-    if(heading !== undefined){
+    targetAngle = normalizeAngle(360 - heading);
 
-        // corregir según orientación pantalla
-        let screenAngle = 0;
-        if(screen.orientation && screen.orientation.angle){
-            screenAngle = screen.orientation.angle;
-        }
+    document.getElementById("debug").innerHTML = `
+    alpha: ${event.alpha?.toFixed(2)}<br>
+    absolute: ${event.absolute}<br>
+    webkitHeading: ${event.webkitCompassHeading}<br>
+    screen angle: ${screen.orientation?.angle}<br>
+    final heading usado: ${heading?.toFixed(2)}
+    `;
+}
 
-        targetAngle = normalizeAngle(360 - heading + screenAngle);
-    }
+if(typeof DeviceOrientationEvent !== "undefined" &&
+   typeof DeviceOrientationEvent.requestPermission === "function"){
+    DeviceOrientationEvent.requestPermission().then(r=>{
+        if(r==="granted") start();
+    });
+}else{
+    start();
 }
 </script>
 
