@@ -2,84 +2,111 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Navegador de Destino</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Brújula de Destino Pro</title>
     <style>
+        :root {
+            --neon: #00f7ff;
+            --bg: #0f0f14;
+        }
+
         body {
             margin: 0;
-            background: #0f0f14;
+            background: var(--bg);
             color: white;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', Roboto, sans-serif;
             overflow: hidden;
             display: flex;
             flex-direction: column;
             height: 100vh;
         }
 
-        /* Panel de entrada de coordenadas */
+        /* Panel Superior */
         .controls {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 20px;
             border-bottom: 1px solid #333;
+            z-index: 10;
         }
 
         .input-group {
             display: flex;
             gap: 10px;
+            margin-bottom: 15px;
         }
 
         input {
             flex: 1;
-            background: #222;
+            background: #1a1a20;
             border: 1px solid #444;
-            color: #00f7ff;
-            padding: 8px;
-            border-radius: 4px;
+            color: var(--neon);
+            padding: 12px;
+            border-radius: 8px;
             font-size: 14px;
+            outline: none;
         }
+
+        input:focus { border-color: var(--neon); }
 
         button {
-            background: #00f7ff;
+            width: 100%;
+            background: var(--neon);
             color: #000;
             border: none;
-            padding: 10px;
+            padding: 14px;
             font-weight: bold;
-            border-radius: 4px;
+            border-radius: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
             cursor: pointer;
-            transition: 0.3s;
+            box-shadow: 0 4px 15px rgba(0, 247, 255, 0.2);
         }
 
-        button:active { transform: scale(0.95); }
+        button:active { transform: scale(0.98); }
 
-        /* Contenedor de la flecha */
-        .container {
+        /* Contenedor Visual */
+        .viewport {
             flex-grow: 1;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             position: relative;
         }
 
+        .arrow-wrapper {
+            width: 280px;
+            height: 280px;
+            position: relative;
+            transition: opacity 0.5s;
+        }
+
         .arrow {
-            width: 250px;
-            height: 250px;
-            filter: drop-shadow(0 0 15px rgba(0, 247, 255, 0.4));
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 0 20px rgba(0, 247, 255, 0.3));
         }
 
-        .debug {
-            background: #111;
+        /* Información de Distancia */
+        .distance-display {
+            margin-top: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--neon);
+            text-shadow: 0 0 10px rgba(0, 247, 255, 0.5);
+        }
+
+        /* Debug Inferior */
+        .debug-panel {
+            background: #000;
             padding: 15px;
-            font-size: 12px;
+            font-size: 11px;
             font-family: monospace;
-            border-top: 1px solid #333;
-            line-height: 1.5;
+            border-top: 1px solid #222;
+            color: #777;
         }
 
-        .status { color: #aaa; margin-bottom: 5px; }
-        .highlight { color: #00f7ff; }
+        .highlight { color: #aaa; }
     </style>
 </head>
 <body>
@@ -89,108 +116,142 @@
         <input type="number" id="latDest" placeholder="Latitud Destino" step="any">
         <input type="number" id="lonDest" placeholder="Longitud Destino" step="any">
     </div>
-    <button onclick="requestPermissions()">ACTIVAR BRÚJULA Y GPS</button>
+    <button onclick="initApp()">Activar Sensores y GPS</button>
 </div>
 
-<div class="container">
-    <div class="arrow" id="arrow">
-        <svg viewBox="0 0 100 100">
-            <polygon points="50,5 90,95 50,75 10,95" fill="#00f7ff"/>
-            <circle cx="50" cy="65" r="5" fill="#0f0f14"/>
+<div class="viewport">
+    <div class="arrow-wrapper" id="arrow">
+        <svg viewBox="0 0 100 100" class="arrow">
+            <defs>
+                <linearGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" style="stop-color:#00f7ff;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#0088ff;stop-opacity:1" />
+                </linearGradient>
+            </defs>
+            <polygon points="50,5 95,95 50,75 5,95" fill="url(#grad)"/>
         </svg>
     </div>
+    <div class="distance-display" id="distance">---</div>
 </div>
 
-<div class="debug" id="debug">
-    Esperando activación...
+<div class="debug-panel" id="debug">
+    Toque el botón para iniciar...
 </div>
 
 <script>
 let currentAngle = 0;
 let targetAngle = 0;
-let myLat = null;
-let myLon = null;
-let destLat = null;
-let destLon = null;
+let lastHeading = 0;
+
+let myLat = null, myLon = null;
+let destLat = null, destLon = null;
 let bearingToTarget = 0;
 
-// Función para calcular el rumbo (Bearing) entre dos puntos
+// Configuración del filtro (0.1 = muy estable/lento, 0.5 = rápido/nervioso)
+const SMOOTH_FACTOR = 0.15; 
+
 function getBearing(lat1, lon1, lat2, lon2) {
     const φ1 = lat1 * Math.PI / 180;
     const φ2 = lat2 * Math.PI / 180;
     const Δλ = (lon2 - lon1) * Math.PI / 180;
-
     const y = Math.sin(Δλ) * Math.cos(φ2);
-    const x = Math.cos(φ1) * Math.sin(φ2) -
-              Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-    
-    let bearing = Math.atan2(y, x) * 180 / Math.PI;
-    return (bearing + 360) % 360;
+    const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function getDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Radio Tierra en km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const d = R * c;
+    return d > 1 ? d.toFixed(2) + " km" : (d * 1000).toFixed(0) + " m";
 }
 
 function animate() {
     let diff = targetAngle - currentAngle;
     
-    // Lógica para el camino más corto (evita giros de 360°)
+    // Evitar rotación completa al cruzar 0/360
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
     
-    currentAngle += diff * 0.1;
+    // Suavizado de la animación de la flecha
+    currentAngle += diff * 0.08; 
     document.getElementById("arrow").style.transform = `rotate(${currentAngle}deg)`;
     requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
 
 function handleOrientation(event) {
-    let heading = 0;
+    let rawHeading = 0;
     
     if (event.webkitCompassHeading !== undefined) {
-        heading = event.webkitCompassHeading; // iOS
+        rawHeading = event.webkitCompassHeading; // iOS
+    } else if (event.alpha !== null) {
+        rawHeading = 360 - event.alpha; // Android
     } else {
-        heading = 360 - event.alpha; // Android (ajustado)
+        return;
+    }
+
+    // APLICACIÓN DEL FILTRO DE PASO BAJO (Estabilización)
+    // Si el cambio es muy brusco (salto de 360), no filtramos para no romper la lógica
+    let delta = rawHeading - lastHeading;
+    if (Math.abs(delta) > 180) {
+        lastHeading = rawHeading;
+    } else {
+        lastHeading = lastHeading + (delta * SMOOTH_FACTOR);
     }
 
     const screenAngle = screen.orientation?.angle || 0;
+    
+    // La brújula apunta al Norte (360 - lastHeading) 
+    // y luego se le suma el ángulo hacia el objetivo
+    targetAngle = (360 - lastHeading) + bearingToTarget - screenAngle;
 
-    // Si tenemos coordenadas de destino, la flecha apunta hacia allá
-    // Si NO hay coordenadas, apunta al Norte (bearingToTarget = 0)
-    targetAngle = (360 - heading) + bearingToTarget - screenAngle;
-
-    updateDebug(heading);
-}
-
-function updateDebug(heading) {
     document.getElementById("debug").innerHTML = `
-        <div class="status">MI UBICACIÓN: <span class="highlight">${myLat ? myLat.toFixed(5)+','+myLon.toFixed(5) : 'Buscando GPS...'}</span></div>
-        <div class="status">RUMBO AL DESTINO: <span class="highlight">${bearingToTarget.toFixed(2)}°</span></div>
-        <div class="status">MI ORIENTACIÓN: <span class="highlight">${heading.toFixed(2)}°</span></div>
+        Orientación: ${lastHeading.toFixed(1)}° | 
+        Hacia Objetivo: ${bearingToTarget.toFixed(1)}°
     `;
 }
 
-async function requestPermissions() {
-    // 1. Obtener coordenadas del formulario
+async function initApp() {
     destLat = parseFloat(document.getElementById('latDest').value);
     destLon = parseFloat(document.getElementById('lonDest').value);
 
-    // 2. Solicitar GPS
+    // Activar GPS
     navigator.geolocation.watchPosition(pos => {
         myLat = pos.coords.latitude;
         myLon = pos.coords.longitude;
-        if (destLat && destLon) {
+        
+        if (!isNaN(destLat) && !isNaN(destLon)) {
             bearingToTarget = getBearing(myLat, myLon, destLat, destLon);
+            document.getElementById("distance").innerText = getDistance(myLat, myLon, destLat, destLon);
+        } else {
+            bearingToTarget = 0; // Si no hay destino, apunta al Norte
+            document.getElementById("distance").innerText = "MODO NORTE";
         }
-    }, err => alert("Error GPS: " + err.message), { enableHighAccuracy: true });
+    }, err => {
+        document.getElementById("debug").innerText = "Error GPS: " + err.message;
+    }, { enableHighAccuracy: true });
 
-    // 3. Solicitar Sensores (iOS requiere permiso explícito)
+    // Activar Sensores
     if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
-        const response = await DeviceOrientationEvent.requestPermission();
-        if (response === "granted") {
-            window.addEventListener("deviceorientationabsolute", handleOrientation, true);
-        }
+        try {
+            const permission = await DeviceOrientationEvent.requestPermission();
+            if (permission === "granted") {
+                window.addEventListener("deviceorientationabsolute", handleOrientation, true);
+            }
+        } catch (e) { alert("Error de permisos"); }
     } else {
         window.addEventListener("deviceorientationabsolute", handleOrientation, true);
         window.addEventListener("deviceorientation", handleOrientation, true);
     }
+    
+    document.querySelector('button').innerText = "SISTEMA ACTIVO";
+    document.querySelector('button').style.background = "#222";
+    document.querySelector('button').style.color = var(--neon);
 }
 </script>
 
