@@ -1,105 +1,196 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Debug Brújula</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Navegador de Destino</title>
+    <style>
+        body {
+            margin: 0;
+            background: #0f0f14;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
 
-<style>
-body{
-    margin:0;
-    background:#0f0f14;
-    color:white;
-    font-family:Arial;
-    overflow:hidden;
-}
+        /* Panel de entrada de coordenadas */
+        .controls {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            border-bottom: 1px solid #333;
+        }
 
-.container{
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    height:70vh;
-}
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
 
-.arrow{
-    width:200px;
-    height:200px;
-}
+        input {
+            flex: 1;
+            background: #222;
+            border: 1px solid #444;
+            color: #00f7ff;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
 
-.debug{
-    position:absolute;
-    bottom:0;
-    width:100%;
-    background:#111;
-    padding:15px;
-    font-size:14px;
-}
-</style>
+        button {
+            background: #00f7ff;
+            color: #000;
+            border: none;
+            padding: 10px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        button:active { transform: scale(0.95); }
+
+        /* Contenedor de la flecha */
+        .container {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .arrow {
+            width: 250px;
+            height: 250px;
+            filter: drop-shadow(0 0 15px rgba(0, 247, 255, 0.4));
+        }
+
+        .debug {
+            background: #111;
+            padding: 15px;
+            font-size: 12px;
+            font-family: monospace;
+            border-top: 1px solid #333;
+            line-height: 1.5;
+        }
+
+        .status { color: #aaa; margin-bottom: 5px; }
+        .highlight { color: #00f7ff; }
+    </style>
 </head>
-
 <body>
+
+<div class="controls">
+    <div class="input-group">
+        <input type="number" id="latDest" placeholder="Latitud Destino" step="any">
+        <input type="number" id="lonDest" placeholder="Longitud Destino" step="any">
+    </div>
+    <button onclick="requestPermissions()">ACTIVAR BRÚJULA Y GPS</button>
+</div>
 
 <div class="container">
     <div class="arrow" id="arrow">
         <svg viewBox="0 0 100 100">
-            <polygon points="50,5 90,95 50,75 10,95"
-                     fill="#00f7ff"/>
+            <polygon points="50,5 90,95 50,75 10,95" fill="#00f7ff"/>
+            <circle cx="50" cy="65" r="5" fill="#0f0f14"/>
         </svg>
     </div>
 </div>
 
 <div class="debug" id="debug">
-Esperando datos...
+    Esperando activación...
 </div>
 
 <script>
 let currentAngle = 0;
 let targetAngle = 0;
+let myLat = null;
+let myLon = null;
+let destLat = null;
+let destLon = null;
+let bearingToTarget = 0;
 
-function normalizeAngle(a){
-    return (a+360)%360;
+// Función para calcular el rumbo (Bearing) entre dos puntos
+function getBearing(lat1, lon1, lat2, lon2) {
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+    const y = Math.sin(Δλ) * Math.cos(φ2);
+    const x = Math.cos(φ1) * Math.sin(φ2) -
+              Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+    
+    let bearing = Math.atan2(y, x) * 180 / Math.PI;
+    return (bearing + 360) % 360;
 }
 
-function animate(){
-    currentAngle += (targetAngle-currentAngle)*0.1;
-    document.getElementById("arrow").style.transform =
-        `rotate(${currentAngle}deg)`;
+function animate() {
+    let diff = targetAngle - currentAngle;
+    
+    // Lógica para el camino más corto (evita giros de 360°)
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+    
+    currentAngle += diff * 0.1;
+    document.getElementById("arrow").style.transform = `rotate(${currentAngle}deg)`;
     requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
 
-function start(){
-    window.addEventListener("deviceorientationabsolute", handle, true);
-    window.addEventListener("deviceorientation", handle, true);
-}
-
-function handle(event){
-
-    let heading;
-    if(event.webkitCompassHeading !== undefined){
-        heading = event.webkitCompassHeading;
+function handleOrientation(event) {
+    let heading = 0;
+    
+    if (event.webkitCompassHeading !== undefined) {
+        heading = event.webkitCompassHeading; // iOS
     } else {
-        heading = event.alpha;
+        heading = 360 - event.alpha; // Android (ajustado)
     }
 
-    targetAngle = normalizeAngle(360 - heading);
+    const screenAngle = screen.orientation?.angle || 0;
 
+    // Si tenemos coordenadas de destino, la flecha apunta hacia allá
+    // Si NO hay coordenadas, apunta al Norte (bearingToTarget = 0)
+    targetAngle = (360 - heading) + bearingToTarget - screenAngle;
+
+    updateDebug(heading);
+}
+
+function updateDebug(heading) {
     document.getElementById("debug").innerHTML = `
-    alpha: ${event.alpha?.toFixed(2)}<br>
-    absolute: ${event.absolute}<br>
-    webkitHeading: ${event.webkitCompassHeading}<br>
-    screen angle: ${screen.orientation?.angle}<br>
-    final heading usado: ${heading?.toFixed(2)}
+        <div class="status">MI UBICACIÓN: <span class="highlight">${myLat ? myLat.toFixed(5)+','+myLon.toFixed(5) : 'Buscando GPS...'}</span></div>
+        <div class="status">RUMBO AL DESTINO: <span class="highlight">${bearingToTarget.toFixed(2)}°</span></div>
+        <div class="status">MI ORIENTACIÓN: <span class="highlight">${heading.toFixed(2)}°</span></div>
     `;
 }
 
-if(typeof DeviceOrientationEvent !== "undefined" &&
-   typeof DeviceOrientationEvent.requestPermission === "function"){
-    DeviceOrientationEvent.requestPermission().then(r=>{
-        if(r==="granted") start();
-    });
-}else{
-    start();
+async function requestPermissions() {
+    // 1. Obtener coordenadas del formulario
+    destLat = parseFloat(document.getElementById('latDest').value);
+    destLon = parseFloat(document.getElementById('lonDest').value);
+
+    // 2. Solicitar GPS
+    navigator.geolocation.watchPosition(pos => {
+        myLat = pos.coords.latitude;
+        myLon = pos.coords.longitude;
+        if (destLat && destLon) {
+            bearingToTarget = getBearing(myLat, myLon, destLat, destLon);
+        }
+    }, err => alert("Error GPS: " + err.message), { enableHighAccuracy: true });
+
+    // 3. Solicitar Sensores (iOS requiere permiso explícito)
+    if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+        const response = await DeviceOrientationEvent.requestPermission();
+        if (response === "granted") {
+            window.addEventListener("deviceorientationabsolute", handleOrientation, true);
+        }
+    } else {
+        window.addEventListener("deviceorientationabsolute", handleOrientation, true);
+        window.addEventListener("deviceorientation", handleOrientation, true);
+    }
 }
 </script>
 
