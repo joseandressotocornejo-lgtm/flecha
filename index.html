@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Radar de Amigos</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root { --neon: #00f7ff; --bg: #0f111a; --card: #1c1f2e; }
+        
+        body {
+            margin: 0; background: var(--bg); color: white;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+        }
+
+        /* Diseño de tarjetas y pasos */
+        .setup-screen {
+            padding: 20px; display: flex; flex-direction: column; gap: 15px;
+            background: var(--card); border-radius: 0 0 25px 25px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5); z-index: 10;
+        }
+
+        .step { display: flex; align-items: center; gap: 10px; font-size: 14px; color: #888; }
+        .step.active { color: var(--neon); font-weight: bold; }
+        .step-num { 
+            background: #333; width: 22px; height: 22px; 
+            display: flex; align-items: center; justify-content: center; 
+            border-radius: 50%; font-size: 12px; 
+        }
+        .active .step-num { background: var(--neon); color: black; }
+
+        input {
+            background: #0f111a; border: 1px solid #333; color: white;
+            padding: 12px; border-radius: 10px; font-size: 16px; outline: none;
+            text-align: center; text-transform: uppercase; letter-spacing: 2px;
+        }
+
+        button {
+            background: var(--neon); color: black; border: none;
+            padding: 15px; font-weight: bold; border-radius: 10px;
+            cursor: pointer; font-size: 14px; transition: 0.3s;
+        }
+
+        /* El Radar */
+        .radar-view {
+            flex-grow: 1; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; position: relative;
+        }
+
+        .compass-circle {
+            width: 260px; height: 260px; border: 2px solid rgba(0, 247, 255, 0.1);
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            position: relative;
+        }
+
+        .arrow {
+            width: 180px; height: 180px; filter: drop-shadow(0 0 15px var(--neon));
+            transition: transform 0.1s ease-out;
+        }
+
+        .info { text-align: center; margin-top: 20px; }
+        .distance { font-size: 32px; font-weight: bold; color: var(--neon); }
+        .status { font-size: 14px; color: #666; margin-top: 5px; text-transform: uppercase; }
+
+        /* Animación de pulso cuando busca */
+        .searching {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.4; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="setup-screen" id="setup">
+    <div class="step active" id="step1">
+        <div class="step-num">1</div> <span>Permite GPS y Sensores</span>
+    </div>
+    <button id="btnSensors" onclick="startSensors()">ACTIVAR MI TELÉFONO</button>
+
+    <div class="step" id="step2">
+        <div class="step-num">2</div> <span>Crea o únete a una Sala</span>
+    </div>
+    <div style="display: flex; gap: 10px;">
+        <input type="text" id="roomName" placeholder="EJ: NOCHE123" style="flex-grow: 1;">
+        <button onclick="connectToRoom()" id="btnConnect" disabled style="opacity: 0.5;">CONECTAR</button>
+    </div>
+</div>
+
+<div class="radar-view">
+    <div class="compass-circle">
+        <svg viewBox="0 0 100 100" class="arrow" id="arrow">
+            <polygon points="50,5 90,95 50,75 10,95" fill="var(--neon)"/>
+        </svg>
+    </div>
+    
+    <div class="info">
+        <div id="distText" class="distance">---</div>
+        <div id="statusText" class="status">Esperando conexión...</div>
+    </div>
+</div>
+
+<script>
+let peer, conn;
+let myLat, myLon, remLat, remLon;
+let targetAngle = 0, currentAngle = 0, lastHead = 0, bearing = 0;
+
+// 1. Iniciar Sensores
+async function startSensors() {
+    // GPS
+    navigator.geolocation.watchPosition(p => {
+        myLat = p.coords.latitude;
+        myLon = p.coords.longitude;
+        updateNav();
+    }, e => alert("Habilita el GPS"), {enableHighAccuracy: true});
+
+    // Brújula
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r = await DeviceOrientationEvent.requestPermission();
+        if (r === 'granted') window.addEventListener("deviceorientation", doOrient, true);
+    } else {
+        window.addEventListener("deviceorientationabsolute", doOrient, true);
+        window.addEventListener("deviceorientation", doOrient, true);
+    }
+
+    // UI Update
+    document.getElementById('step1').classList.remove('active');
+    document.getElementById('step2').classList.add('active');
+    document.getElementById('btnSensors').innerText = "✅ SENSORES LISTOS";
+    document.getElementById('btnSensors').disabled = true;
+    document.getElementById('btnConnect').disabled = false;
+    document.getElementById('btnConnect').style.opacity = 1;
+}
+
+// 2. Conexión por Sala (PeerJS)
+function connectToRoom() {
+    const room = document.getElementById('roomName').value.trim().toLowerCase();
+    if (!room) return alert("Escribe un nombre de sala");
+
+    document.getElementById('statusText').innerText = "Buscando en sala: " + room;
+    document.getElementById('statusText').classList.add('searching');
+
+    // Usamos el nombre de la sala como ID de conexión
+    // Nota: El primero que entra "crea" la sala, el segundo se "une"
+    peer = new Peer(room + "_user_" + Math.floor(Math.random()*999));
+    
+    peer.on('open', () => {
+        // Intentar conectar al otro usuario (suponemos que el otro usa el ID base de la sala)
+        // Para simplificar, vamos a escanear la sala
+        console.log("Mi ID Peer listo");
+    });
+
+    // Esta es una versión simplificada: el "Buscador" se conecta al "Emisor"
+    // Para que sea 100% didáctico, usaremos el ID de sala directamente
+    if (!conn) {
+        // Lógica de autoreconexión simple
+        setInterval(() => {
+            if (!conn) {
+                conn = peer.connect(room, { reliable: true });
+                if (conn) setupConn();
+            }
+        }, 3000);
+    }
+
+    // También escuchamos si alguien se conecta a nosotros
+    peer = new Peer(room); 
+    peer.on('connection', c => {
+        conn = c;
+        setupConn();
+    });
+}
+
+// ERROR FIX: En PeerJS gratuito, un ID solo puede ser usado por uno.
+// Ajuste para que funcione como "SALA":
+function setupConn() {
+    conn.on('open', () => {
+        document.getElementById('statusText').innerText = "¡CONECTADO!";
+        document.getElementById('statusText').classList.remove('searching');
+        document.getElementById('setup').style.display = 'none'; // Escondemos setup al conectar
+
+        // Enviar mi GPS cada 2 seg
+        setInterval(() => {
+            if(myLat) conn.send({lat: myLat, lon: myLon});
+        }, 2000);
+    });
+
+    conn.on('data', d => {
+        remLat = d.lat; remLon = d.lon;
+        updateNav();
+    });
+}
+
+// 3. Matemáticas y Animación
+function doOrient(e) {
+    let head = e.webkitCompassHeading || (360 - e.alpha);
+    let delta = head - lastHead;
+    if (Math.abs(delta) > 180) lastHead = head;
+    else lastHead += delta * 0.15;
+    targetAngle = (360 - lastHead) + bearing - (screen.orientation?.angle || 0);
+}
+
+function updateNav() {
+    if (myLat && remLat) {
+        // Calcular Rumbo
+        const φ1 = myLat * Math.PI / 180, φ2 = remLat * Math.PI / 180;
+        const Δλ = (remLon - myLon) * Math.PI / 180;
+        const y = Math.sin(Δλ) * Math.cos(φ2);
+        const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+        bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+
+        // Calcular Distancia
+        const R = 6371000;
+        const dLat = (remLat-myLat)*Math.PI/180;
+        const dLon = (remLon-myLon)*Math.PI/180;
+        const a = Math.sin(dLat/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(dLon/2)**2;
+        const d = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        document.getElementById('distText').innerText = d > 1000 ? (d/1000).toFixed(1) + " km" : Math.round(d) + " m";
+    }
+}
+
+function animate() {
+    let diff = targetAngle - currentAngle;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+    currentAngle += diff * 0.08;
+    document.getElementById("arrow").style.transform = `rotate(${currentAngle}deg)`;
+    requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>
