@@ -3,30 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Radar Pro: Salas y Lugares</title>
+    <title>Radar Pro: Objetivos y Salas</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --neon: #00f7ff; --bg: #05070a; --panel: #11141d; }
-        
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
         body {
             margin: 0; background: var(--bg); color: white;
             font-family: 'Segoe UI', sans-serif;
-            height: 100vh; height: 100dvh; /* Altura dinámica para móviles */
-            display: flex; flex-direction: column; overflow: hidden;
+            height: 100dvh; display: flex; flex-direction: column; overflow: hidden;
         }
 
-        /* Utilidades de Pantalla Completa */
         .app-container { flex: 1; display: flex; flex-direction: column; position: relative; }
 
-        /* Paneles Deslizables */
         .menu-overlay {
             position: absolute; bottom: 0; left: 0; right: 0;
             background: var(--panel); border-radius: 20px 20px 0 0;
             padding: 20px; z-index: 100; transform: translateY(100%);
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             border-top: 1px solid var(--neon);
+            max-height: 80%; overflow-y: auto;
         }
         .menu-overlay.active { transform: translateY(0); }
 
@@ -35,15 +32,13 @@
             justify-content: center; align-items: center; position: relative;
         }
 
-        /* Estética de la Brújula */
         .compass-ring {
             width: 70vw; height: 70vw; max-width: 300px; max-height: 300px;
             border: 2px solid rgba(0, 247, 255, 0.1); border-radius: 50%;
             display: flex; align-items: center; justify-content: center; position: relative;
         }
-        #arrow { width: 50%; height: 50%; filter: drop-shadow(0 0 15px var(--neon)); transition: transform 0.1s; }
+        #arrow { width: 50%; height: 50%; filter: drop-shadow(0 0 15px var(--neon)); }
 
-        /* Botonera Inferior Permanente */
         .bottom-nav {
             display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
             padding: 15px; background: #000; border-top: 1px solid #222;
@@ -54,6 +49,7 @@
             font-weight: bold; border-radius: 8px; font-size: 13px; cursor: pointer;
         }
         button.sec { background: #222; color: var(--neon); border: 1px solid var(--neon); }
+        button.danger { background: #441111; color: white; padding: 5px 10px; }
 
         input {
             width: 100%; background: #000; border: 1px solid #333;
@@ -63,6 +59,11 @@
         .list-item {
             background: #1a1e26; padding: 12px; border-radius: 8px;
             margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;
+        }
+
+        .history-tag {
+            display: inline-block; background: #222; color: var(--neon);
+            padding: 5px 10px; border-radius: 15px; margin: 5px 5px 0 0; font-size: 11px;
         }
 
         #status-bar { font-size: 11px; padding: 5px 15px; color: #666; background: #000; text-align: center; }
@@ -84,30 +85,31 @@
     </div>
 
     <div id="menu-salas" class="menu-overlay">
-        <h3>📡 Sala de Rastreo</h3>
-        <p style="font-size: 12px; color: #888;">Únete a la misma sala que tu amigo.</p>
+        <h3>Sala de Rastreo</h3>
         <input type="text" id="input-sala" placeholder="NOMBRE DE LA SALA">
-        <button onclick="conectarSala()" style="width: 100%;">ENLAZAR AHORA</button>
-        <button onclick="toggleMenu('menu-salas')" class="sec" style="width: 100%; margin-top: 10px;">CERRAR</button>
+        <button onclick="conectarSala()" style="width: 100%;">ENLAZAR</button>
+        <div id="historial-salas" style="margin-top: 15px;">
+            <small style="color: #666; display: block; margin-bottom: 5px;">Recientes:</small>
+        </div>
+        <button onclick="toggleMenu('menu-salas')" class="sec" style="width: 100%; margin-top: 15px;">CERRAR</button>
     </div>
 
-    <div id="menu-lugares" class="menu-overlay">
-        <h3>📍 Mis Lugares</h3>
-        <button onclick="guardarAqui()" style="width: 100%; margin-bottom: 10px;">💾 GUARDAR UBICACIÓN ACTUAL</button>
+    <div id="menu-objetivos" class="menu-overlay">
+        <h3>Objetivos</h3>
+        <button onclick="guardarAqui()" style="width: 100%; margin-bottom: 10px;">GUARDAR UBICACION ACTUAL</button>
         <div style="border-top: 1px solid #333; padding-top: 10px;">
-            <input type="text" id="manual-nom" placeholder="Nombre (Ej: Mi Coche)">
+            <input type="text" id="manual-nom" placeholder="Nombre">
             <input type="text" id="manual-lat" placeholder="Latitud">
             <input type="text" id="manual-lon" placeholder="Longitud">
             <button onclick="guardarManual()" class="sec" style="width: 100%;">GUARDAR MANUAL</button>
         </div>
-        <div id="lista-lugares" style="margin-top: 15px; max-height: 200px; overflow-y: auto;">
-            </div>
-        <button onclick="toggleMenu('menu-lugares')" class="sec" style="width: 100%; margin-top: 10px;">CERRAR</button>
+        <div id="lista-objetivos" style="margin-top: 15px;"></div>
+        <button onclick="toggleMenu('menu-objetivos')" class="sec" style="width: 100%; margin-top: 15px;">CERRAR</button>
     </div>
 
     <div class="bottom-nav">
-        <button onclick="toggleMenu('menu-salas')">RASTREO EN VIVO</button>
-        <button onclick="toggleMenu('menu-lugares')" class="sec">MIS LUGARES</button>
+        <button onclick="toggleMenu('menu-salas')">RASTREO</button>
+        <button onclick="toggleMenu('menu-objetivos')" class="sec">OBJETIVOS</button>
     </div>
 </div>
 
@@ -116,11 +118,9 @@ let peer, conn;
 let myPos = {lat:0, lon:0}, targetPos = {lat:0, lon:0};
 let heading = 0, bearing = 0, currentRot = 0;
 
-// INICIO: Cargar preferencias guardadas
 document.addEventListener('DOMContentLoaded', () => {
-    const lastRoom = localStorage.getItem('lastRoom');
-    if(lastRoom) document.getElementById('input-sala').value = lastRoom;
-    renderLugares();
+    renderObjetivos();
+    renderHistorialSalas();
     startSensors();
 });
 
@@ -152,7 +152,8 @@ async function startSensors() {
 
 function onRot(e) {
     let val = e.webkitCompassHeading || (360 - e.alpha);
-    if(!val) return;
+    if(val === undefined) return;
+    
     let diff = val - heading;
     if (Math.abs(diff) > 180) heading = val;
     else heading += diff * 0.2;
@@ -165,17 +166,23 @@ function onRot(e) {
     document.getElementById('arrow').style.transform = `rotate(${currentRot}deg)`;
 }
 
-// LÓGICA DE SALAS
-function conectarSala() {
-    const room = document.getElementById('input-sala').value.trim().toLowerCase();
+function conectarSala(nombreSala) {
+    const room = (nombreSala || document.getElementById('input-sala').value).trim().toLowerCase();
     if(!room) return;
-    localStorage.setItem('lastRoom', room);
     
+    // Guardar en historial
+    let salas = JSON.parse(localStorage.getItem('historialSalas') || '[]');
+    if(!salas.includes(room)) {
+        salas.unshift(room);
+        localStorage.setItem('historialSalas', JSON.stringify(salas.slice(0, 5)));
+        renderHistorialSalas();
+    }
+
     if(peer) peer.destroy();
     peer = new Peer(room);
     
     peer.on('open', () => {
-        document.getElementById('target-label').innerText = "ESPERANDO CONEXIÓN...";
+        document.getElementById('target-label').innerText = "BUSCANDO SALA: " + room.toUpperCase();
         toggleMenu('menu-salas');
     });
 
@@ -190,14 +197,16 @@ function conectarSala() {
 
 function setupPeer() {
     conn.on('open', () => {
-        document.getElementById('target-label').innerText = "RASTREANDO AMIGO";
+        document.getElementById('target-label').innerText = "RASTREANDO DISPOSITIVO";
     });
-    conn.on('data', d => { targetPos = d; updateCalculations(); });
+    conn.on('data', d => { 
+        targetPos = d; 
+        updateCalculations(); 
+    });
 }
 
-// LÓGICA DE LUGARES
 function guardarAqui() {
-    const nom = prompt("Nombre para este lugar:");
+    const nom = prompt("Nombre del objetivo:");
     if(!nom) return;
     saveToLocal({nom, lat: myPos.lat, lon: myPos.lon});
 }
@@ -206,57 +215,70 @@ function guardarManual() {
     const nom = document.getElementById('manual-nom').value;
     const lat = parseFloat(document.getElementById('manual-lat').value);
     const lon = parseFloat(document.getElementById('manual-lon').value);
-    if(nom && lat && lon) {
+    if(nom && !isNaN(lat) && !isNaN(lon)) {
         saveToLocal({nom, lat, lon});
         document.getElementById('manual-nom').value = "";
+        document.getElementById('manual-lat').value = "";
+        document.getElementById('manual-lon').value = "";
     }
 }
 
 function saveToLocal(obj) {
-    let list = JSON.parse(localStorage.getItem('lugares') || '[]');
+    let list = JSON.parse(localStorage.getItem('objetivos') || '[]');
     list.push(obj);
-    localStorage.setItem('lugares', JSON.stringify(list));
-    renderLugares();
+    localStorage.setItem('objetivos', JSON.stringify(list));
+    renderObjetivos();
 }
 
-function renderLugares() {
-    const list = JSON.parse(localStorage.getItem('lugares') || '[]');
-    const container = document.getElementById('lista-lugares');
+function renderObjetivos() {
+    const list = JSON.parse(localStorage.getItem('objetivos') || '[]');
+    const container = document.getElementById('lista-objetivos');
     container.innerHTML = "";
     list.forEach((l, index) => {
         container.innerHTML += `
             <div class="list-item">
-                <div onclick="setTarget(${l.lat}, ${l.lon}, '${l.nom}')">
-                    <b>${l.nom}</b><br><small>${l.lat.toFixed(4)}, ${l.lon.toFixed(4)}</small>
+                <div onclick="setTarget(${l.lat}, ${l.lon}, '${l.nom}')" style="flex:1">
+                    <b>${l.nom.toUpperCase()}</b><br><small>${l.lat.toFixed(4)}, ${l.lon.toFixed(4)}</small>
                 </div>
-                <button onclick="borrarLugar(${index})" style="background:red; color:white; padding:5px 10px;">X</button>
+                <button onclick="borrarObjetivo(${index})" class="danger">X</button>
             </div>
         `;
     });
 }
 
-function setTarget(lat, lon, nom) {
-    targetPos = {lat, lon};
-    document.getElementById('target-label').innerText = "DESTINO: " + nom.toUpperCase();
-    if(conn) conn.close();
-    updateCalculations();
-    toggleMenu('menu-lugares');
+function renderHistorialSalas() {
+    const salas = JSON.parse(localStorage.getItem('historialSalas') || '[]');
+    const container = document.getElementById('historial-salas');
+    container.innerHTML = '<small style="color: #666; display: block; margin-bottom: 5px;">Recientes:</small>';
+    salas.forEach(s => {
+        container.innerHTML += `<span class="history-tag" onclick="conectarSala('${s}')">${s.toUpperCase()}</span>`;
+    });
 }
 
-function borrarLugar(index) {
-    let list = JSON.parse(localStorage.getItem('lugares') || '[]');
+function setTarget(lat, lon, nom) {
+    targetPos = {lat, lon};
+    document.getElementById('target-label').innerText = "OBJETIVO: " + nom.toUpperCase();
+    if(conn) { conn.close(); conn = null; }
+    updateCalculations();
+    toggleMenu('menu-objetivos');
+}
+
+function borrarObjetivo(index) {
+    let list = JSON.parse(localStorage.getItem('objetivos') || '[]');
     list.splice(index, 1);
-    localStorage.setItem('lugares', JSON.stringify(list));
-    renderLugares();
+    localStorage.setItem('objetivos', JSON.stringify(list));
+    renderObjetivos();
 }
 
 function updateCalculations() {
     if(!myPos.lat || !targetPos.lat) return;
     const l1 = myPos.lat * Math.PI/180, l2 = targetPos.lat * Math.PI/180;
     const dl = (targetPos.lon - myPos.lon) * Math.PI/180;
+    
     const y = Math.sin(dl) * Math.cos(l2);
     const x = Math.cos(l1)*Math.sin(l2) - Math.sin(l1)*Math.cos(l2)*Math.cos(dl);
     bearing = (Math.atan2(y, x) * 180/Math.PI + 360) % 360;
+    
     const R = 6371000;
     const a = Math.sin((l2-l1)/2)**2 + Math.cos(l1)*Math.cos(l2)*Math.sin(dl/2)**2;
     const d = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
