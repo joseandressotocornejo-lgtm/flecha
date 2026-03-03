@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Radar Pro: Objetivos y Salas</title>
+    <title>Brujula</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --neon: #00f7ff; --bg: #05070a; --panel: #11141d; }
@@ -117,11 +117,31 @@
 let peer, conn;
 let myPos = {lat:0, lon:0}, targetPos = {lat:0, lon:0};
 let heading = 0, bearing = 0, currentRot = 0;
+let wakeLock = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     renderObjetivos();
     renderHistorialSalas();
     startSensors();
+});
+
+// Función para mantener la pantalla encendida
+async function requestWakeLock() {
+    try {
+        if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+            console.log('Pantalla siempre activa');
+        }
+    } catch (err) {
+        console.error(`${err.name}, ${err.message}`);
+    }
+}
+
+// Re-activar si se minimiza y vuelve a abrir
+document.addEventListener('visibilitychange', async () => {
+    if (wakeLock !== null && document.visibilityState === 'visible') {
+        requestWakeLock();
+    }
 });
 
 function toggleMenu(id) {
@@ -132,6 +152,8 @@ function toggleMenu(id) {
 }
 
 async function startSensors() {
+    requestWakeLock(); // Activar al iniciar sensores
+
     navigator.geolocation.watchPosition(p => {
         myPos.lat = p.coords.latitude; myPos.lon = p.coords.longitude;
         document.getElementById('status-bar').innerText = `GPS OK (±${p.coords.accuracy.toFixed(0)}m)`;
@@ -170,7 +192,8 @@ function conectarSala(nombreSala) {
     const room = (nombreSala || document.getElementById('input-sala').value).trim().toLowerCase();
     if(!room) return;
     
-    // Guardar en historial
+    requestWakeLock(); // Asegurar bloqueo al conectar sala
+
     let salas = JSON.parse(localStorage.getItem('historialSalas') || '[]');
     if(!salas.includes(room)) {
         salas.unshift(room);
