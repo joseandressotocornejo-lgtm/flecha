@@ -3,168 +3,212 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Radar Precisión P2P</title>
+    <title>Radar de Alta Precisión</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        :root { --neon: #00f7ff; --bg: #0f111a; --card: #1c1f2e; }
+        :root { --neon: #00f7ff; --bg: #0b0e14; }
         body {
             margin: 0; background: var(--bg); color: white;
-            font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+            font-family: 'Monaco', 'Consolas', monospace; 
+            display: flex; flex-direction: column; height: 100vh; overflow: hidden;
         }
-        .setup-screen {
-            padding: 20px; display: flex; flex-direction: column; gap: 15px;
-            background: var(--card); border-radius: 0 0 25px 25px; box-shadow: 0 5px 20px rgba(0,0,0,0.5); z-index: 10;
+        .header {
+            padding: 20px; background: rgba(255,255,255,0.02);
+            border-bottom: 1px solid #1e2530; text-align: center;
+        }
+        .setup-box {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 80%; max-width: 300px; background: #161b22; padding: 25px;
+            border-radius: 20px; border: 1px solid var(--neon); z-index: 100;
+            display: flex; flex-direction: column; gap: 15px;
         }
         input {
-            background: #0f111a; border: 1px solid #333; color: white;
-            padding: 12px; border-radius: 10px; font-size: 16px; outline: none; text-align: center;
+            background: #0d1117; border: 1px solid #30363d; color: var(--neon);
+            padding: 15px; border-radius: 10px; text-align: center; font-size: 18px;
         }
         button {
             background: var(--neon); color: black; border: none; padding: 15px;
-            font-weight: bold; border-radius: 10px; cursor: pointer;
+            font-weight: bold; border-radius: 10px; cursor: pointer; text-transform: uppercase;
         }
-        .radar-view {
-            flex-grow: 1; display: flex; flex-direction: column; justify-content: center; align-items: center;
+        .radar-container {
+            flex-grow: 1; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; position: relative;
         }
-        .compass-circle {
-            width: 280px; height: 280px; border: 2px solid rgba(0, 247, 255, 0.05);
-            border-radius: 50%; display: flex; align-items: center; justify-content: center;
-            position: relative;
+        /* El círculo de brújula */
+        .compass-ring {
+            width: 300px; height: 300px; border: 2px solid #1e2530;
+            border-radius: 50%; position: relative;
+            display: flex; align-items: center; justify-content: center;
         }
-        /* Círculos decorativos para dar profundidad */
-        .compass-circle::before {
-            content: ''; position: absolute; width: 70%; height: 70%;
-            border: 1px dashed rgba(0, 247, 255, 0.2); border-radius: 50%;
+        .compass-ring::after {
+            content: 'N'; position: absolute; top: 10px; color: #ff4444; font-weight: bold;
         }
-        #arrow { width: 160px; height: 160px; filter: drop-shadow(0 0 20px var(--neon)); z-index: 5; }
-        .info { text-align: center; margin-top: 25px; }
-        .distance { font-size: 40px; font-weight: bold; color: var(--neon); letter-spacing: -1px; }
-        .status { font-size: 12px; color: #888; text-transform: uppercase; margin-top: 5px; letter-spacing: 1px; }
+        #arrow {
+            width: 140px; height: 140px; filter: drop-shadow(0 0 25px var(--neon));
+            will-change: transform;
+        }
+        .stats {
+            margin-top: 30px; text-align: center;
+        }
+        .dist-val { font-size: 45px; font-weight: bold; color: var(--neon); }
+        .label { font-size: 12px; color: #58a6ff; text-transform: uppercase; letter-spacing: 2px; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
-<div class="setup-screen" id="setup">
-    <button id="btnSensors" onclick="startSensors()">1. CALIBRAR SENSORES</button>
-    <div style="display: flex; gap: 10px;">
-        <input type="text" id="roomInput" placeholder="NOMBRE DE SALA">
-        <button id="btnConnect" onclick="initNetwork()" disabled>2. RASTREAR</button>
-    </div>
+<div id="overlay" class="setup-box">
+    <div style="font-size: 12px; color: #888; margin-bottom: 10px;">PASO 1: CALIBRAR</div>
+    <button onclick="unlockSensors()">ACTIVAR SENSORES</button>
+    <div style="font-size: 12px; color: #888; margin-top: 10px;">PASO 2: NOMBRE SALA</div>
+    <input type="text" id="roomName" placeholder="CÓDIGO">
+    <button onclick="startSync()" id="btnSync" disabled>CONECTAR RADAR</button>
 </div>
 
-<div class="radar-view">
-    <div class="compass-circle">
+<div class="header">
+    <span id="status">SISTEMA OFFLINE</span>
+</div>
+
+<div class="radar-container">
+    <div class="compass-ring">
         <svg viewBox="0 0 100 100" id="arrow">
-            <polygon points="50,2 95,98 50,78 5,98" fill="var(--neon)"/>
+            <path d="M50 5 L90 95 L50 75 L10 95 Z" fill="var(--neon)"/>
         </svg>
     </div>
-    <div class="info">
-        <div id="distText" class="distance">---</div>
-        <div id="statusText" class="status">Esperando conexión</div>
+    
+    <div class="stats">
+        <div class="label">Distancia al objetivo</div>
+        <div id="distDisplay" class="dist-val">---</div>
+        <div id="accuracy" style="font-size: 10px; color: #444;">Margen GPS: --</div>
     </div>
 </div>
 
 <script>
-let peer = null, conn = null;
-let myLat, myLon, remLat, remLon;
-let targetAngle = 0, currentAngle = 0, lastHead = 0, bearing = 0;
+let peer, conn;
+let myPos = {lat: 0, lon: 0}, remPos = {lat: 0, lon: 0};
+let bearing = 0, heading = 0, currentRotation = 0;
+let isConnected = false;
 
-async function startSensors() {
-    // GPS de alta precisión
+// Configuración de suavizado (Low Pass Filter)
+const SMOOTHING = 0.12; 
+
+async function unlockSensors() {
+    // 1. GPS de Máxima Precisión
     navigator.geolocation.watchPosition(p => {
-        myLat = p.coords.latitude;
-        myLon = p.coords.longitude;
-        updateLogic();
-    }, e => alert("Error: GPS no disponible"), {enableHighAccuracy: true, maximumAge: 0});
+        myPos.lat = p.coords.latitude;
+        myPos.lon = p.coords.longitude;
+        document.getElementById('accuracy').innerText = `Margen GPS: ${p.coords.accuracy.toFixed(1)}m`;
+        if(isConnected) sendData();
+        updateMath();
+    }, e => alert("GPS Error"), {enableHighAccuracy: true, maximumAge: 0});
 
-    // Brújula con permisos
-    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        const r = await DeviceOrientationEvent.requestPermission();
-        if (r === 'granted') window.addEventListener("deviceorientation", doOrient, true);
+    // 2. Sensores de Orientación
+    if (DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const res = await DeviceOrientationEvent.requestPermission();
+        if (res === 'granted') window.addEventListener('deviceorientation', handleRot);
     } else {
-        window.addEventListener("deviceorientationabsolute", doOrient, true);
-        window.addEventListener("deviceorientation", doOrient, true);
+        window.addEventListener('deviceorientationabsolute', handleRot);
+        window.addEventListener('deviceorientation', handleRot);
     }
 
-    document.getElementById('btnSensors').innerText = "✅ SENSORES ACTIVOS";
-    document.getElementById('btnSensors').disabled = true;
-    document.getElementById('btnConnect').disabled = false;
+    document.getElementById('btnSync').disabled = false;
+    document.getElementById('btnSync').style.opacity = 1;
 }
 
-function initNetwork() {
-    const room = document.getElementById('roomInput').value.trim().toLowerCase();
-    if (!room) return;
-    document.getElementById('statusText').innerText = "Buscando...";
+function handleRot(e) {
+    let val = e.webkitCompassHeading || (360 - e.alpha);
+    if (!val) return;
+
+    // Filtro para evitar saltos bruscos
+    let diff = val - heading;
+    if (Math.abs(diff) > 180) heading = val;
+    else heading += diff * SMOOTHING;
+
+    updateVisuals();
+}
+
+function startSync() {
+    const room = document.getElementById('roomName').value.trim().toLowerCase();
+    if(!room) return;
 
     peer = new Peer(room);
-    peer.on('open', () => document.getElementById('statusText').innerText = "Esperando compañero...");
-    peer.on('connection', (c) => { conn = c; setupEvents(); });
+    
+    peer.on('open', () => {
+        document.getElementById('status').innerText = "SALA: " + room + " (ESPERANDO...)";
+    });
+
+    peer.on('connection', (c) => {
+        conn = c;
+        bindEvents();
+    });
+
     peer.on('error', (err) => {
-        if (err.type === 'unavailable-id') {
-            peer = new Peer(); 
-            peer.on('open', () => { conn = peer.connect(room); setupEvents(); });
+        if(err.type === 'unavailable-id') {
+            peer = new Peer();
+            peer.on('open', () => {
+                conn = peer.connect(room);
+                bindEvents();
+            });
         }
     });
 }
 
-function setupEvents() {
+function bindEvents() {
     conn.on('open', () => {
-        document.getElementById('statusText').innerText = "¡Sincronizado!";
-        document.getElementById('setup').style.display = 'none';
-        setInterval(() => { if(myLat && conn.open) conn.send({lat: myLat, lon: myLon}); }, 1000);
+        isConnected = true;
+        document.getElementById('overlay').classList.add('hidden');
+        document.getElementById('status').innerText = "RADAR EN VIVO";
+        document.getElementById('status').style.color = "var(--neon)";
+        sendData();
     });
-    conn.on('data', (d) => { remLat = d.lat; remLon = d.lon; updateLogic(); });
+
+    conn.on('data', (d) => {
+        remPos.lat = d.lat;
+        remPos.lon = d.lon;
+        updateMath();
+    });
 }
 
-function doOrient(e) {
-    // Obtenemos el ángulo del norte (alpha en Android, webkit en iOS)
-    let head = e.webkitCompassHeading || (360 - e.alpha);
-    if (head === undefined) return;
-
-    // Filtro para suavizar el temblor de la mano
-    let delta = head - lastHead;
-    if (Math.abs(delta) > 180) lastHead = head;
-    else lastHead += delta * 0.2;
-
-    const screenAngle = screen.orientation?.angle || window.orientation || 0;
-    
-    // FÓRMULA MAESTRA:
-    // (360 - lastHead) rota la flecha al norte magnético.
-    // + bearing le suma el ángulo hacia el otro teléfono.
-    // - screenAngle corrige si el móvil está de lado.
-    targetAngle = (360 - lastHead) + bearing - screenAngle;
+function sendData() {
+    if(conn && conn.open && myPos.lat !== 0) {
+        conn.send({lat: myPos.lat, lon: myPos.lon});
+    }
 }
 
-function updateLogic() {
-    if (!myLat || !remLat) return;
-    
-    // Cálculo de Rumbo (Bearing) - Trigonometría esférica
-    const lat1 = myLat * Math.PI / 180;
-    const lat2 = remLat * Math.PI / 180;
-    const dLon = (remLon - myLon) * Math.PI / 180;
+function updateMath() {
+    if (myPos.lat === 0 || remPos.lat === 0) return;
 
+    const lat1 = myPos.lat * Math.PI / 180;
+    const lat2 = remPos.lat * Math.PI / 180;
+    const dLon = (remPos.lon - myPos.lon) * Math.PI / 180;
+
+    // Fórmula de Bearing (Rumbo inicial)
     const y = Math.sin(dLon) * Math.cos(lat2);
     const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
     bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 
-    // Cálculo de Distancia (Fórmula de Haversine)
+    // Distancia Haversine
     const R = 6371000;
     const dLat = lat2 - lat1;
     const a = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
     const d = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     
-    document.getElementById('distText').innerText = d > 1000 ? (d/1000).toFixed(1) + "km" : Math.round(d) + "m";
+    document.getElementById('distDisplay').innerText = d > 1000 ? (d/1000).toFixed(2) + "km" : Math.round(d) + "m";
 }
 
-function animate() {
-    let diff = targetAngle - currentAngle;
+function updateVisuals() {
+    // La rotación final es: 
+    // Lo que el teléfono cree que es el norte (negativo) + el ángulo hacia el objetivo
+    let target = (360 - heading) + bearing;
+    
+    // Suavizado de la flecha
+    let diff = target - currentRotation;
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
-    currentAngle += diff * 0.1;
-    document.getElementById("arrow").style.transform = `rotate(${currentAngle}deg)`;
-    requestAnimationFrame(animate);
+    
+    currentRotation += diff * 0.15;
+    document.getElementById('arrow').style.transform = `rotate(${currentRotation}deg)`;
 }
-animate();
 </script>
 </body>
 </html>
