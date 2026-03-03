@@ -2,197 +2,265 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Radar Precisión Militar</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Radar Pro: Salas y Lugares</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        :root { --neon: #00f7ff; --bg: #05070a; }
+        :root { --neon: #00f7ff; --bg: #05070a; --panel: #11141d; }
+        
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
         body {
             margin: 0; background: var(--bg); color: white;
-            font-family: 'Courier New', monospace; 
-            display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+            height: 100vh; height: 100dvh; /* Altura dinámica para móviles */
+            display: flex; flex-direction: column; overflow: hidden;
         }
-        /* Interfaz de Radar */
-        .radar-screen {
-            flex-grow: 1; display: flex; flex-direction: column;
+
+        /* Utilidades de Pantalla Completa */
+        .app-container { flex: 1; display: flex; flex-direction: column; position: relative; }
+
+        /* Paneles Deslizables */
+        .menu-overlay {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: var(--panel); border-radius: 20px 20px 0 0;
+            padding: 20px; z-index: 100; transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-top: 1px solid var(--neon);
+        }
+        .menu-overlay.active { transform: translateY(0); }
+
+        .radar-view {
+            flex: 1; display: flex; flex-direction: column;
             justify-content: center; align-items: center; position: relative;
-            background: radial-gradient(circle, #101520 0%, #05070a 100%);
         }
-        /* Rejilla de radar */
-        .grid {
-            position: absolute; width: 320px; height: 320px;
-            border: 1px solid rgba(0, 247, 255, 0.1); border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
+
+        /* Estética de la Brújula */
+        .compass-ring {
+            width: 70vw; height: 70vw; max-width: 300px; max-height: 300px;
+            border: 2px solid rgba(0, 247, 255, 0.1); border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; position: relative;
         }
-        .grid::before {
-            content: ''; position: absolute; width: 66%; height: 66%;
-            border: 1px solid rgba(0, 247, 255, 0.1); border-radius: 50%;
+        #arrow { width: 50%; height: 50%; filter: drop-shadow(0 0 15px var(--neon)); transition: transform 0.1s; }
+
+        /* Botonera Inferior Permanente */
+        .bottom-nav {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+            padding: 15px; background: #000; border-top: 1px solid #222;
         }
-        #arrow {
-            width: 120px; height: 120px; z-index: 10;
-            filter: drop-shadow(0 0 15px var(--neon));
-            will-change: transform;
+
+        button {
+            background: var(--neon); color: #000; border: none; padding: 12px;
+            font-weight: bold; border-radius: 8px; font-size: 13px; cursor: pointer;
         }
-        /* Capa de configuración */
-        .overlay {
-            position: absolute; inset: 0; background: rgba(5,7,10,0.95);
-            z-index: 100; display: flex; flex-direction: column;
-            justify-content: center; align-items: center; padding: 20px;
-        }
-        .card {
-            background: #10141b; border: 1px solid var(--neon);
-            padding: 30px; border-radius: 15px; width: 100%; max-width: 300px;
-        }
+        button.sec { background: #222; color: var(--neon); border: 1px solid var(--neon); }
+
         input {
             width: 100%; background: #000; border: 1px solid #333;
-            color: var(--neon); padding: 12px; margin: 15px 0;
-            border-radius: 5px; text-align: center; font-size: 18px; box-sizing: border-box;
+            color: white; padding: 10px; margin: 8px 0; border-radius: 5px;
         }
-        button {
-            width: 100%; background: var(--neon); color: #000;
-            border: none; padding: 15px; font-weight: bold; border-radius: 5px;
-            cursor: pointer; text-transform: uppercase;
+
+        .list-item {
+            background: #1a1e26; padding: 12px; border-radius: 8px;
+            margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;
         }
-        .data-panel {
-            padding: 15px; background: #0a0e14; border-top: 1px solid #1a202a;
-            display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 10px;
-        }
-        .val { color: var(--neon); font-size: 14px; display: block; }
+
+        #status-bar { font-size: 11px; padding: 5px 15px; color: #666; background: #000; text-align: center; }
     </style>
 </head>
 <body>
 
-<div id="overlay" class="overlay">
-    <div class="card">
-        <h2 style="margin:0 0 10px 0; font-size: 14px; color: var(--neon);">SISTEMA DE RASTREO</h2>
-        <button onclick="setupSystem()">1. INICIALIZAR SENSORES</button>
-        <input type="text" id="room" placeholder="CÓDIGO DE SALA">
-        <button id="btnConn" onclick="connect()" disabled style="opacity:0.3;">2. ENLAZAR RADAR</button>
+<div id="status-bar">GPS Desconectado</div>
+
+<div class="app-container">
+    <div class="radar-view">
+        <div class="compass-ring">
+            <svg viewBox="0 0 100 100" id="arrow">
+                <path d="M50 0 L90 100 L50 80 L10 100 Z" fill="var(--neon)"/>
+            </svg>
+        </div>
+        <h2 id="dist-main" style="margin: 20px 0 5px 0; font-size: 40px;">---</h2>
+        <span id="target-label" style="color: var(--neon); font-size: 12px; letter-spacing: 2px;">SIN OBJETIVO</span>
     </div>
-</div>
 
-<div class="radar-screen">
-    <div class="grid"></div>
-    <svg viewBox="0 0 100 100" id="arrow">
-        <path d="M50 0 L95 100 L50 80 L5 100 Z" fill="var(--neon)"/>
-    </svg>
-</div>
+    <div id="menu-salas" class="menu-overlay">
+        <h3>📡 Sala de Rastreo</h3>
+        <p style="font-size: 12px; color: #888;">Únete a la misma sala que tu amigo.</p>
+        <input type="text" id="input-sala" placeholder="NOMBRE DE LA SALA">
+        <button onclick="conectarSala()" style="width: 100%;">ENLAZAR AHORA</button>
+        <button onclick="toggleMenu('menu-salas')" class="sec" style="width: 100%; margin-top: 10px;">CERRAR</button>
+    </div>
 
-<div class="data-panel">
-    <div>DISTANCIA: <span id="dist" class="val">0.0 m</span></div>
-    <div>MARGEN ERROR: <span id="acc" class="val">--</span></div>
-    <div>RUMBO OBJ: <span id="bear" class="val">0°</span></div>
-    <div>MI ORIENTACIÓN: <span id="head" class="val">0°</span></div>
+    <div id="menu-lugares" class="menu-overlay">
+        <h3>📍 Mis Lugares</h3>
+        <button onclick="guardarAqui()" style="width: 100%; margin-bottom: 10px;">💾 GUARDAR UBICACIÓN ACTUAL</button>
+        <div style="border-top: 1px solid #333; padding-top: 10px;">
+            <input type="text" id="manual-nom" placeholder="Nombre (Ej: Mi Coche)">
+            <input type="text" id="manual-lat" placeholder="Latitud">
+            <input type="text" id="manual-lon" placeholder="Longitud">
+            <button onclick="guardarManual()" class="sec" style="width: 100%;">GUARDAR MANUAL</button>
+        </div>
+        <div id="lista-lugares" style="margin-top: 15px; max-height: 200px; overflow-y: auto;">
+            </div>
+        <button onclick="toggleMenu('menu-lugares')" class="sec" style="width: 100%; margin-top: 10px;">CERRAR</button>
+    </div>
+
+    <div class="bottom-nav">
+        <button onclick="toggleMenu('menu-salas')">RASTREO EN VIVO</button>
+        <button onclick="toggleMenu('menu-lugares')" class="sec">MIS LUGARES</button>
+    </div>
 </div>
 
 <script>
 let peer, conn;
-let myLat = 0, myLon = 0, targetLat = 0, targetLon = 0;
-let bearing = 0, filteredHeading = 0, currentArrowRotation = 0;
+let myPos = {lat:0, lon:0}, targetPos = {lat:0, lon:0};
+let heading = 0, bearing = 0, currentRot = 0;
 
-// Configuración de Filtro Exponencial (Suavizado extremo)
-const ALPHA = 0.15; 
+// INICIO: Cargar preferencias guardadas
+document.addEventListener('DOMContentLoaded', () => {
+    const lastRoom = localStorage.getItem('lastRoom');
+    if(lastRoom) document.getElementById('input-sala').value = lastRoom;
+    renderLugares();
+    startSensors();
+});
 
-async function setupSystem() {
-    // GPS de frecuencia ultra-alta
+function toggleMenu(id) {
+    document.querySelectorAll('.menu-overlay').forEach(m => {
+        if(m.id === id) m.classList.toggle('active');
+        else m.classList.remove('active');
+    });
+}
+
+async function startSensors() {
     navigator.geolocation.watchPosition(p => {
-        myLat = p.coords.latitude;
-        myLon = p.coords.longitude;
-        document.getElementById('acc').innerText = p.coords.accuracy.toFixed(1) + "m";
-        if (conn && conn.open) sendLoc();
-        calculateEverything();
-    }, null, { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 });
+        myPos.lat = p.coords.latitude; myPos.lon = p.coords.longitude;
+        document.getElementById('status-bar').innerText = `GPS OK (±${p.coords.accuracy.toFixed(0)}m)`;
+        if(conn && conn.open) conn.send(myPos);
+        updateCalculations();
+    }, null, {enableHighAccuracy:true});
 
-    // Sensores con soporte absoluto (Chrome/Android/iOS)
     if (window.DeviceOrientationEvent) {
         if (typeof DeviceOrientationEvent.requestPermission === 'function') {
             const res = await DeviceOrientationEvent.requestPermission();
-            if (res === 'granted') window.addEventListener('deviceorientation', onRotate);
+            if (res === 'granted') window.addEventListener('deviceorientation', onRot);
         } else {
-            window.addEventListener('deviceorientationabsolute', onRotate);
-            window.addEventListener('deviceorientation', onRotate);
+            window.addEventListener('deviceorientationabsolute', onRot);
+            window.addEventListener('deviceorientation', onRot);
         }
     }
-    document.getElementById('btnConn').disabled = false;
-    document.getElementById('btnConn').style.opacity = 1;
 }
 
-function onRotate(e) {
-    let rawHeading = e.webkitCompassHeading || (360 - e.alpha);
-    if (!rawHeading) return;
-
-    // --- FILTRO DE COMPLEMENTARIEDAD ---
-    // Evita el salto de 360 a 0
-    let diff = rawHeading - filteredHeading;
-    if (diff > 180) diff -= 360;
-    if (diff < -180) diff += 360;
+function onRot(e) {
+    let val = e.webkitCompassHeading || (360 - e.alpha);
+    if(!val) return;
+    let diff = val - heading;
+    if (Math.abs(diff) > 180) heading = val;
+    else heading += diff * 0.2;
     
-    filteredHeading += (diff * ALPHA);
-    document.getElementById('head').innerText = Math.round(filteredHeading) + "°";
-    
-    updateArrow();
+    let targetRot = (360 - heading) + bearing;
+    let aDiff = targetRot - currentRot;
+    if (aDiff > 180) aDiff -= 360;
+    if (aDiff < -180) aDiff += 360;
+    currentRot += aDiff * 0.15;
+    document.getElementById('arrow').style.transform = `rotate(${currentRot}deg)`;
 }
 
-function connect() {
-    const room = document.getElementById('room').value.trim().toLowerCase();
+// LÓGICA DE SALAS
+function conectarSala() {
+    const room = document.getElementById('input-sala').value.trim().toLowerCase();
+    if(!room) return;
+    localStorage.setItem('lastRoom', room);
+    
+    if(peer) peer.destroy();
     peer = new Peer(room);
     
-    peer.on('open', () => document.getElementById('btnConn').innerText = "ESPERANDO...");
-    peer.on('connection', c => { conn = c; initEvents(); });
+    peer.on('open', () => {
+        document.getElementById('target-label').innerText = "ESPERANDO CONEXIÓN...";
+        toggleMenu('menu-salas');
+    });
+
+    peer.on('connection', c => { conn = c; setupPeer(); });
     peer.on('error', err => {
-        if (err.type === 'unavailable-id') {
+        if(err.type === 'unavailable-id') {
             peer = new Peer();
-            peer.on('open', () => { conn = peer.connect(room); initEvents(); });
+            peer.on('open', () => { conn = peer.connect(room); setupPeer(); });
         }
     });
 }
 
-function initEvents() {
+function setupPeer() {
     conn.on('open', () => {
-        document.getElementById('overlay').style.display = 'none';
-        setInterval(sendLoc, 1000); // Latido de ubicación
+        document.getElementById('target-label').innerText = "RASTREANDO AMIGO";
     });
-    conn.on('data', d => {
-        targetLat = d.lat; targetLon = d.lon;
-        calculateEverything();
+    conn.on('data', d => { targetPos = d; updateCalculations(); });
+}
+
+// LÓGICA DE LUGARES
+function guardarAqui() {
+    const nom = prompt("Nombre para este lugar:");
+    if(!nom) return;
+    saveToLocal({nom, lat: myPos.lat, lon: myPos.lon});
+}
+
+function guardarManual() {
+    const nom = document.getElementById('manual-nom').value;
+    const lat = parseFloat(document.getElementById('manual-lat').value);
+    const lon = parseFloat(document.getElementById('manual-lon').value);
+    if(nom && lat && lon) {
+        saveToLocal({nom, lat, lon});
+        document.getElementById('manual-nom').value = "";
+    }
+}
+
+function saveToLocal(obj) {
+    let list = JSON.parse(localStorage.getItem('lugares') || '[]');
+    list.push(obj);
+    localStorage.setItem('lugares', JSON.stringify(list));
+    renderLugares();
+}
+
+function renderLugares() {
+    const list = JSON.parse(localStorage.getItem('lugares') || '[]');
+    const container = document.getElementById('lista-lugares');
+    container.innerHTML = "";
+    list.forEach((l, index) => {
+        container.innerHTML += `
+            <div class="list-item">
+                <div onclick="setTarget(${l.lat}, ${l.lon}, '${l.nom}')">
+                    <b>${l.nom}</b><br><small>${l.lat.toFixed(4)}, ${l.lon.toFixed(4)}</small>
+                </div>
+                <button onclick="borrarLugar(${index})" style="background:red; color:white; padding:5px 10px;">X</button>
+            </div>
+        `;
     });
 }
 
-function sendLoc() {
-    if (myLat && conn.open) conn.send({ lat: myLat, lon: myLon });
+function setTarget(lat, lon, nom) {
+    targetPos = {lat, lon};
+    document.getElementById('target-label').innerText = "DESTINO: " + nom.toUpperCase();
+    if(conn) conn.close();
+    updateCalculations();
+    toggleMenu('menu-lugares');
 }
 
-function calculateEverything() {
-    if (!myLat || !targetLat) return;
+function borrarLugar(index) {
+    let list = JSON.parse(localStorage.getItem('lugares') || '[]');
+    list.splice(index, 1);
+    localStorage.setItem('lugares', JSON.stringify(list));
+    renderLugares();
+}
 
-    const lat1 = myLat * Math.PI / 180;
-    const lat2 = targetLat * Math.PI / 180;
-    const dLon = (targetLon - myLon) * Math.PI / 180;
-
-    // Rumbo (Bearing)
-    const y = Math.sin(dLon) * Math.cos(lat2);
-    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-    bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-    document.getElementById('bear').innerText = Math.round(bearing) + "°";
-
-    // Distancia
+function updateCalculations() {
+    if(!myPos.lat || !targetPos.lat) return;
+    const l1 = myPos.lat * Math.PI/180, l2 = targetPos.lat * Math.PI/180;
+    const dl = (targetPos.lon - myPos.lon) * Math.PI/180;
+    const y = Math.sin(dl) * Math.cos(l2);
+    const x = Math.cos(l1)*Math.sin(l2) - Math.sin(l1)*Math.cos(l2)*Math.cos(dl);
+    bearing = (Math.atan2(y, x) * 180/Math.PI + 360) % 360;
     const R = 6371000;
-    const a = Math.sin((lat2-lat1)/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+    const a = Math.sin((l2-l1)/2)**2 + Math.cos(l1)*Math.cos(l2)*Math.sin(dl/2)**2;
     const d = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    document.getElementById('dist').innerText = d > 1000 ? (d/1000).toFixed(2) + " km" : d.toFixed(1) + " m";
-}
-
-function updateArrow() {
-    // Cálculo final compensado
-    let targetRotation = (360 - filteredHeading) + bearing;
-    
-    // Suavizado de animación para que parezca una aguja real
-    let diff = targetRotation - currentArrowRotation;
-    if (diff > 180) diff -= 360;
-    if (diff < -180) diff += 360;
-    
-    currentArrowRotation += diff * 0.2;
-    document.getElementById('arrow').style.transform = `rotate(${currentArrowRotation}deg)`;
+    document.getElementById('dist-main').innerText = d > 1000 ? (d/1000).toFixed(2)+"km" : Math.round(d)+"m";
 }
 </script>
 </body>
